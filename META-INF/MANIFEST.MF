@@ -1,0 +1,12 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Promotions for iDempiere
+Bundle-SymbolicName: org.idempiere.promotion
+Bundle-Version: 1.0.0.qualifier
+Bundle-Vendor: Ing. Victor Suarez <victor.suarez.is@gmail.com>
+Automatic-Module-Name: org.idempiere.promotion
+Bundle-RequiredExecutionEnvironment: JavaSE-11
+Bundle-ActivationPolicy: lazy
+Require-Bundle: org.adempiere.base,
+ org.adempiere.plugin.utils
+Bundle-Activator: org.adempiere.plugin.utils.Incremental2PackActivator
