@@ -133,6 +133,9 @@ public class PromotionRule {
 				if (mandatoryLineNotFound) {
 					break;
 				}
+				if(!validateDistributions(list, validPromotionLineIDs, orderLineQty))
+					break;
+				
 				for (MPromotionDistribution pd : list) {
 					if (entry.getValue().contains(pd.getM_PromotionLine_ID())) {
 						//sort available orderline base on distribution sorting type
@@ -289,9 +292,92 @@ public class PromotionRule {
 						}
 					}
 				}
-				break;
 			}
 		}
+	}
+
+	/**
+	 * Validate if There are Order Line Qty for this Promotion
+	 * @param list of Distributions
+	 * @param validPromotionLineIDs 
+	 * @param orderLineQty
+	 * @return
+	 */
+	private static boolean validateDistributions(List<MPromotionDistribution> list, List<Integer> validPromotionLineIDs, Map<Integer, BigDecimal> orderLineQty) {
+		for(MPromotionDistribution pd : list) {
+			if(!pd.getM_PromotionLine().isMandatoryPL())
+				continue;
+			
+			List<Integer> orderLineIdList = new ArrayList<Integer>();
+			orderLineIdList.addAll(orderLineQty.keySet());
+			List<Integer> eligibleOrderLineIDs = getEligibleOrderLines(pd, validPromotionLineIDs, orderLineIdList, orderLineQty);
+			if (eligibleOrderLineIDs.isEmpty())
+				return false;
+
+			BigDecimal compareQty = pd.getQty();
+			BigDecimal totalOrderLineQty = BigDecimal.ZERO;
+			for (int C_OrderLine_ID : eligibleOrderLineIDs) {
+				BigDecimal availableQty = orderLineQty.get(C_OrderLine_ID);
+				if (availableQty.signum() <= 0) continue;
+				totalOrderLineQty = totalOrderLineQty.add(availableQty);
+			}
+			int compare = totalOrderLineQty.compareTo(compareQty);
+			boolean match = false;
+			if (compare <= 0 && "<=".equals(pd.getOperation())) {
+				match = true;
+			} else if (compare >= 0 && ">=".equals(pd.getOperation())) {
+				match = true;
+			}
+			if(!match)
+				return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Order lines eligible for this distribution
+	 * @param distribution
+	 * @param validPromotionLineIDs
+	 * @param orderLineIdList
+	 * @param orderLineQty
+	 * @return Eligible Order Lines 
+	 */
+	private static List<Integer> getEligibleOrderLines(MPromotionDistribution distribution, List<Integer> validPromotionLineIDs, List<Integer> orderLineIdList, Map<Integer, BigDecimal> orderLineQty) {
+		
+		String sql = "SELECT C_OrderLine.C_OrderLine_ID FROM M_PromotionLine"
+				+ " INNER JOIN M_PromotionGroup ON (M_PromotionLine.M_PromotionGroup_ID = M_PromotionGroup.M_PromotionGroup_ID AND M_PromotionGroup.IsActive = 'Y')"
+				+ " INNER JOIN M_PromotionGroupLine ON (M_PromotionGroup.M_PromotionGroup_ID = M_PromotionGroupLine.M_PromotionGroup_ID AND M_PromotionGroupLine.IsActive = 'Y')"
+				+ " INNER JOIN C_OrderLine ON (M_PromotionGroupLine.M_Product_ID = C_OrderLine.M_Product_ID)"
+				+ " WHERE M_PromotionLine.M_PromotionLine_ID = ? AND C_OrderLine.C_OrderLine_ID = ?"
+				+ " AND M_PromotionLine.IsActive = 'Y'";
+
+		List<Integer>eligibleOrderLineIDs = new ArrayList<Integer>();
+		if (distribution.getM_PromotionLine().getM_PromotionGroup_ID() == 0) {
+			if (validPromotionLineIDs.contains(distribution.getM_PromotionLine_ID())) {
+				eligibleOrderLineIDs.addAll(orderLineIdList);
+			}
+		} else {
+			for(int C_OrderLine_ID : orderLineIdList) {
+				BigDecimal availableQty = orderLineQty.get(C_OrderLine_ID);
+				if (availableQty.signum() <= 0) continue;
+				PreparedStatement stmt = null;
+				ResultSet rs = null;
+				try {
+					stmt = DB.prepareStatement(sql, distribution.get_TrxName());
+					stmt.setInt(1, distribution.getM_PromotionLine_ID());
+					stmt.setInt(2, C_OrderLine_ID);
+					rs = stmt.executeQuery();
+					if (rs.next()) {
+						eligibleOrderLineIDs.add(C_OrderLine_ID);
+					}
+				} catch (Exception e) {
+					throw new AdempiereException(e.getLocalizedMessage(), e);
+				} finally {
+					DB.close(rs, stmt);
+				}
+			}
+		}
+		return eligibleOrderLineIDs;
 	}
 
 	private static void addDiscountLine(MOrder order, MOrderLine ol, BigDecimal discount,
@@ -422,41 +508,8 @@ public class PromotionRule {
 	private static DistributionSet calculateDistributionQty(MPromotionDistribution distribution,
 			DistributionSet prevSet, List<Integer> validPromotionLineIDs, Map<Integer, BigDecimal> orderLineQty, List<Integer> orderLineIdList, String trxName) throws Exception {
 
-			String sql = "SELECT C_OrderLine.C_OrderLine_ID FROM M_PromotionLine"
-				+ " INNER JOIN M_PromotionGroup ON (M_PromotionLine.M_PromotionGroup_ID = M_PromotionGroup.M_PromotionGroup_ID AND M_PromotionGroup.IsActive = 'Y')"
-				+ " INNER JOIN M_PromotionGroupLine ON (M_PromotionGroup.M_PromotionGroup_ID = M_PromotionGroupLine.M_PromotionGroup_ID AND M_PromotionGroupLine.IsActive = 'Y')"
-				+ " INNER JOIN C_OrderLine ON (M_PromotionGroupLine.M_Product_ID = C_OrderLine.M_Product_ID)"
-				+ " WHERE M_PromotionLine.M_PromotionLine_ID = ? AND C_OrderLine.C_OrderLine_ID = ?"
-				+ " AND M_PromotionLine.IsActive = 'Y'";
-
-
 		DistributionSet distributionSet = new DistributionSet();
-		List<Integer>eligibleOrderLineIDs = new ArrayList<Integer>();
-		if (distribution.getM_PromotionLine().getM_PromotionGroup_ID() == 0) {
-			if (validPromotionLineIDs.contains(distribution.getM_PromotionLine_ID())) {
-				eligibleOrderLineIDs.addAll(orderLineIdList);
-			}
-		} else {
-			for(int C_OrderLine_ID : orderLineIdList) {
-				BigDecimal availableQty = orderLineQty.get(C_OrderLine_ID);
-				if (availableQty.signum() <= 0) continue;
-				PreparedStatement stmt = null;
-				ResultSet rs = null;
-				try {
-					stmt = DB.prepareStatement(sql, trxName);
-					stmt.setInt(1, distribution.getM_PromotionLine_ID());
-					stmt.setInt(2, C_OrderLine_ID);
-					rs = stmt.executeQuery();
-					if (rs.next()) {
-						eligibleOrderLineIDs.add(C_OrderLine_ID);
-					}
-				} catch (Exception e) {
-					throw new AdempiereException(e.getLocalizedMessage(), e);
-				} finally {
-					DB.close(rs, stmt);
-				}
-			}
-		}
+		List<Integer> eligibleOrderLineIDs = getEligibleOrderLines(distribution, validPromotionLineIDs, orderLineIdList, orderLineQty);
 
 		if (eligibleOrderLineIDs.isEmpty()) {
 			distributionSet.setQty = BigDecimal.ZERO;
