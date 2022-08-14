@@ -1,5 +1,9 @@
-# org.idempiere.promotion
+# Promotions
 Plugin to handle Promotions for iDempiere
+
+## Description
+With this plugin, the issue https://idempiere.atlassian.net/browse/IDEMPIERE-2826, proposed here: https://wiki.idempiere.org/en/IDempiere_workshop_2015/transcript#Promotions, is resolved.
+Moves and improves functionality from Promotions to plugin
 
 ## Documentation
 http://www.adempiere.com/Sponsored_Development:_Promotions
